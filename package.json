@@ -1,0 +1,29 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node ./src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "docker-build-production": "docker build --no-cache -f Dockerfile -t 141x-game-authorizer-server:latest --build-arg build_env=production .",
+    "docker-tag-production": "docker tag 141x-game-authorizer-server:latest ggcaponetto/141x-game-authorizer-server:latest",
+    "docker-push-production": "docker image push ggcaponetto/141x-game-authorizer-server:latest",
+    "docker-run-production": "docker stop 141x-game-authorizer-server || true && docker rm 141x-game-authorizer-server || true || docker run -d --name 141x-game-authorizer-server -p 5001:5001 -d ggcaponetto/141x-game-authorizer-server:latest .",
+    "docker-deploy": "npm run docker-build-production && npm run docker-tag-production && npm run docker-push-production"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@emurgo/cardano-serialization-lib-nodejs": "^9.1.2",
+    "axios": "^0.24.0",
+    "bip39": "^3.0.4",
+    "chalk": "^5.0.0",
+    "cross-env": "^7.0.3",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.1",
+    "loglevel": "^1.8.0",
+    "socket.io": "^4.4.0",
+    "yargs": "^17.2.1"
+  }
+}
