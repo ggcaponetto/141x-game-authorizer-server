@@ -50,6 +50,7 @@ function GameServer(){
   this.gameClients = {};
   this.authClients = {};
   this.gameState = {}
+  this.addressData = {};
   this.add = function (socket){
     this.sockets[socket.id] = socket;
   }
@@ -83,11 +84,23 @@ function GameServer(){
   this.getGameState = function (){
     return this.gameState;
   }
-  this.broadcastGameState = function (){
-    const gameState = this.gameState;
+  this.setAddressData = function (socket, addressData){
+    this.addressData[socket.id] = addressData;
+  }
+  this.removeAddressData = function (socket){
+    delete this.addressData[socket.id];
+  }
+  this.broadcastGameState = function (eventName){
+    const gameState = {
+      ...this.gameState,
+      players: {
+        online: Object.keys(this.gameClients).length,
+        addressData: this.addressData
+      }
+    }
     Object.keys(this.gameClients).forEach((gameClientSocket) => {
-      this.gameClients[gameClientSocket].emit("server", gameState, async (response) => {
-        ll.debug("socket: server-res", response);
+      this.gameClients[gameClientSocket].emit(eventName, gameState, async (response) => {
+        ll.debug(`socket: ${eventName}`, response);
       });
     })
   }
@@ -107,64 +120,109 @@ const printServerState = () => {
     gameState
   });
 }
-io.on("connection", (socket) => {
-  ll.debug("socket: connection", socket.id);
-  server.add(socket);
-  printServerState();
-  socket.on("set-client-type", (data) => {
-    ll.debug("socket: set-client-type", {
-      data,
-      socketId: socket.id
-    });
-    if(data.payload === "auth-client"){
-      server.addAuthClient(socket);
-    } else if(data.payload === "game-client"){
-      server.addGameClient(socket);
-    }
-    printServerState();
-  })
-  socket.on("disconnect", () => {
-    ll.debug("socket: disconnect", socket.id);
-    server.remove(socket);
-    server.removeAuthClient(socket);
-    server.removeGameClient(socket);
-    printServerState();
-  })
-  socket.on("command-req", (data, callback) => {
-    ll.debug("socket: command-req", data);
-    let authSockets = server.getAuthClientSockets();
-    Object.keys(authSockets).forEach((authSocketId) => {
-      authSockets[authSocketId].emit("auth-req", data, async (response) => {
-        ll.debug("socket: auth-res", response);
-        // verify the data
-        let network = process.env.NETWORK;
-        let message = response.data;
-        let signingResponse = response.signed;
-        let originatorAddress = data.headers.address;
-        let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-        ll.debug(`socket: auth-res verifies: ${verifies}`, {
-          network, message, signingResponse, originatorAddress
+
+function Main(){
+  this.run = function (server, verifier){
+    io.on("connection", (socket) => {
+      ll.debug("socket: connection", socket.id);
+      server.add(socket);
+      printServerState();
+      socket.on("set-client-type", (data) => {
+        ll.debug("socket: set-client-type", {
+          data,
+          socketId: socket.id
         });
-        if(verifies){
-          // verify the account status and give a response to the game client
-          let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
-          let addressData = addressDataResponse ? addressDataResponse.data : null;
-          callback({
-            verifies,
-            addressData,
-            gameGameState: server.getGameState()
-          })
-          // update the game state and broadcast it
-          server.setGameState({
-            lastCommand: `${Date.now()}`
-          })
-          server.broadcastGameState();
+        if(data.payload === "auth-client"){
+          server.addAuthClient(socket);
+        } else if(data.payload === "game-client"){
+          server.addGameClient(socket);
         }
         printServerState();
+      })
+      socket.on("disconnect", () => {
+        ll.debug("socket: disconnect", socket.id);
+        server.remove(socket);
+        server.removeAuthClient(socket);
+        server.removeGameClient(socket);
+        server.removeAddressData(socket);
+        printServerState();
+      })
+      socket.on("command-req", (data, callback) => {
+        ll.debug("socket: command-req", data);
+        let authSockets = server.getAuthClientSockets();
+        Object.keys(authSockets).forEach((authSocketId) => {
+          authSockets[authSocketId].emit("auth-req", data, async (response) => {
+            ll.debug("socket: auth-res", response);
+            // verify the data
+            let network = process.env.NETWORK;
+            let message = response.data;
+            let signingResponse = response.signed;
+            let originatorAddress = data.headers.address;
+            let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
+            ll.debug(`socket: auth-res verifies: ${verifies}`, {
+              network, message, signingResponse, originatorAddress
+            });
+            if(verifies){
+              // verify the account status and give a response to the game client
+              let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
+              let addressData = addressDataResponse ? addressDataResponse.data : null;
+              callback({
+                verifies,
+                addressData,
+                gameGameState: server.getGameState()
+              })
+              server.broadcastGameState("game-state");
+            }
+            printServerState();
+          });
+        })
       });
-    })
-  });
-});
+      socket.on("player-id", (data, callback) => {
+        ll.debug("socket: player-id", data);
+        let authSockets = server.getAuthClientSockets();
+        Object.keys(authSockets).forEach((authSocketId) => {
+          authSockets[authSocketId].emit("auth-req", data, async (response) => {
+            ll.debug("socket: auth-res", response);
+            // verify the data
+            let network = process.env.NETWORK;
+            let message = response.data;
+            let signingResponse = response.signed;
+            let originatorAddress = data.headers.address;
+            let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
+            ll.debug(`socket: auth-res verifies: ${verifies}`, {
+              network, message, signingResponse, originatorAddress
+            });
+            if(verifies){
+              // verify the account status and give a response to the game client
+              let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
+              let addressData = addressDataResponse ? addressDataResponse.data : null;
+              server.setAddressData(socket, addressData);
+              callback({
+                verifies,
+                addressData,
+                gameGameState: server.getGameState()
+              })
+              server.broadcastGameState("game-state");
+            }
+            printServerState();
+          });
+        })
+      });
+    });
+  }
+  this.startClientUpdates = function (server){
+    this.handle = setInterval(function (){
+      server.broadcastGameState("game-state");
+    }, 1000);
+  }
+  this.stopClientUpdates = function (){
+    clearInterval(this.handle);
+  }
+}
+
+let main = new Main();
+main.run(server, verifier);
+main.startClientUpdates(server);
 
 let port = process.env.PORT;
 httpServer.listen(port);
