@@ -24,7 +24,7 @@ This app is built with plain node.js and [blockfrost](https://blockfrost.io/).
                            3.provides signature        |        |                    |
                                                        +--------+--------------------+
 ````
-An example game client is [https://hoskyverse.141x.io](https://hoskyverse.141x.io)
+An example game client is [https://meta.141x.io](https://meta.141x.io)
 
 ## Getting started
 1. ``git clone git@github.com:ggcaponetto/141x-game-authorizer.git``
