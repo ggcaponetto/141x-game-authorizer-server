@@ -49,7 +49,11 @@ function GameServer(){
   this.sockets = {};
   this.gameClients = {};
   this.authClients = {};
-  this.gameState = {}
+  this.gameState = {
+    playerPositions: {
+
+    }
+  }
   this.addressData = {};
   this.add = function (socket){
     this.sockets[socket.id] = socket;
@@ -173,7 +177,6 @@ function Main(){
               })
               server.broadcastGameState("game-state");
             }
-            printServerState();
           });
         })
       });
@@ -204,7 +207,45 @@ function Main(){
               })
               server.broadcastGameState("game-state");
             }
-            printServerState();
+          });
+        })
+      });
+      socket.on("player-action", (playerActionData, callback) => {
+        ll.debug("socket: player-action", playerActionData);
+        let authSockets = server.getAuthClientSockets();
+        Object.keys(authSockets).forEach((authSocketId) => {
+          authSockets[authSocketId].emit("auth-req", playerActionData, async (response) => {
+            ll.debug("socket: auth-res", response);
+            // verify the data
+            let network = process.env.NETWORK;
+            let message = response.data;
+            let signingResponse = response.signed;
+            let originatorAddress = playerActionData.headers.address;
+            let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
+            ll.debug(`socket: auth-res verifies: ${verifies}`, {
+              network, message, signingResponse, originatorAddress
+            });
+            if(verifies){
+              // verify the account status and give a response to the game client
+              let addressDataResponse = await verifier.getAccountData(network, playerActionData.headers.address)
+              let addressData = addressDataResponse ? addressDataResponse.data : null;
+              server.setAddressData(socket, addressData);
+
+              // update the game state
+              let tempGameState = server.getGameState();
+              tempGameState.playerPositions[socket.id] = {
+                address: originatorAddress,
+                position: playerActionData.payload.payload
+              }
+              server.setGameState(tempGameState)
+
+              callback({
+                verifies,
+                addressData,
+                gameGameState: server.getGameState()
+              })
+              server.broadcastGameState("game-state");
+            }
           });
         })
       });
