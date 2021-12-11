@@ -1,3 +1,6 @@
+const fs = require("fs");
+const path = require("path");
+
 require('dotenv').config()
 const express = require("express");
 const { createServer } = require("http");
@@ -50,6 +53,9 @@ function GameServer(){
   this.gameClients = {};
   this.authClients = {};
   this.gameState = {
+    playerItems: {
+
+    },
     playerPositions: {
 
     }
@@ -112,9 +118,59 @@ function GameServer(){
       });
     })
   }
+
+  this.saveGameState = async function (filePath){
+    let stringifiedGameState = JSON.stringify(this.gameState);
+    let savedGameState = await new Promise((res, rej) => {
+      fs.writeFile(filePath, stringifiedGameState, (err, data) => {
+        if (err) rej(err);
+        try {
+          res(stringifiedGameState)
+        }catch (e){
+          ll.error(`could not save the game state to the file ${filePath}`, stringifiedGameState)
+          ll.error(e)
+        }
+      });
+    })
+    return savedGameState;
+  }
+
+  this.loadGameState = async function (filePath){
+    this.gameState = await new Promise((res, rej) => {
+      fs.readFile(filePath, (err, data) => {
+        if(err) rej(err);
+        if (err) throw err;
+        try {
+          let gameState = JSON.parse(data);
+          res(gameState)
+        }catch (e){
+          ll.error(`coulde not parse the game state from the file ${filePath}`, data)
+          ll.error(e)
+        }
+      });
+    })
+    return this.gameState;
+  }
+
+  this.startAutosave = function (intervalMilliseconds, filePath, options = {
+    historized: false
+  }){
+    this.autosaveHandle = setInterval(async () => {
+      if(options.historized){
+        await this.saveGameState(filePath.replace(".json", `-${Date.now()}.json`))
+      }
+      await this.saveGameState(filePath.replace(".json", `-latest.json`))
+    }, intervalMilliseconds)
+  }
+  this.stopAutosave = function (){
+    clearInterval(this.autosaveHandle);
+  }
 }
 
 const server = new GameServer();
+server.loadGameState( path.resolve(`${__dirname}/../mounted/saves/game-state-latest.json`));
+server.startAutosave(5000, path.resolve(`${__dirname}/../mounted/saves/game-state.json`), { historized: false });
+
 const verifier = new Verifier();
 const printServerState = () => {
   let allSockets = Object.keys(server.getSockets());
@@ -144,6 +200,7 @@ function Main(){
           server.addAuthClient(socket);
         } else if(data.payload === "game-client"){
           server.addGameClient(socket);
+          server.broadcastGameState("game-state");
         }
         printServerState();
       })
@@ -155,50 +212,10 @@ function Main(){
         server.removeAddressData(socket);
         // remove all player positions
         let tempGameState = server.getGameState();
-        let addressData = server.getAddressData(socket);
-        let currentAddress = !!addressData ? addressData.address : null;
-        Object.keys(tempGameState.playerPositions).forEach(socketId => {
-          if(
-            socketId === socket.id
-            ||
-            currentAddress && (tempGameState.playerPositions[socketId].address === currentAddress)
-          ){
-            delete tempGameState.playerPositions[socketId];
-          }
-        });
         server.setGameState(tempGameState);
 
         printServerState();
       })
-      socket.on("command-req", (data, callback) => {
-        ll.debug("socket: command-req", data);
-        let authSockets = server.getAuthClientSockets();
-        Object.keys(authSockets).forEach((authSocketId) => {
-          authSockets[authSocketId].emit("auth-req", data, async (response) => {
-            // ll.debug("socket: auth-res", response);
-            // verify the data
-            let network = process.env.NETWORK;
-            let message = response.data;
-            let signingResponse = response.signed;
-            let originatorAddress = data.headers.address;
-            let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            /*ll.debug(`socket: auth-res verifies: ${verifies}`, {
-              network, message, signingResponse, originatorAddress
-            });*/
-            if(verifies){
-              // verify the account status and give a response to the game client
-              let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
-              let addressData = addressDataResponse ? addressDataResponse.data : null;
-              callback({
-                verifies,
-                addressData,
-                gameGameState: server.getGameState()
-              })
-              server.broadcastGameState("game-state");
-            }
-          });
-        })
-      });
       socket.on("player-id", (data, callback) => {
         // ll.debug("socket: player-id", data);
         let authSockets = server.getAuthClientSockets();
@@ -252,7 +269,7 @@ function Main(){
 
               // update the game state
               let tempGameState = server.getGameState();
-              tempGameState.playerPositions[socket.id] = {
+              tempGameState.playerPositions[originatorAddress] = {
                 address: originatorAddress,
                 position: playerActionData.payload.payload
               }
@@ -291,5 +308,9 @@ ll.debug("websocket server is listening on port " + port +  ". on the " + proces
 
 //catches uncaught exceptions
 process.on('uncaughtException', (e) => {
-  console.error("this should not have happened", e)
+  console.error("this should not have happened", e);
 });
+
+module.exports = {
+  GameServer
+}
