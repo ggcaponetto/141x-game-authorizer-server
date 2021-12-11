@@ -43,8 +43,8 @@ function Verifier(){
     } else {
       throw new Error("could not verify the message signature. ensure that the public keys include the key_pub_bech32 and stake_key_public_raw_hash keys.");
     }
-    ll.debug(`the message ${message} has a valid signature ${payload} from address ${originatorAddress}: ${signatureIsVerified}`);
-    ll.debug(`the address ${originatorAddress} can be reconstructed from the public keys in the header: ${addressCanBeDerivedFromPublicKeys}`);
+    // ll.debug(`the message ${message} has a valid signature ${payload} from address ${originatorAddress}: ${signatureIsVerified}`);
+    // ll.debug(`the address ${originatorAddress} can be reconstructed from the public keys in the header: ${addressCanBeDerivedFromPublicKeys}`);
     return signatureIsVerified && addressCanBeDerivedFromPublicKeys;
   }
   this.getAccountData = async function (network, address){

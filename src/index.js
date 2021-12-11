@@ -91,12 +91,16 @@ function GameServer(){
   this.setAddressData = function (socket, addressData){
     this.addressData[socket.id] = addressData;
   }
+  this.getAddressData = function (socket){
+    return this.addressData[socket.id];
+  }
   this.removeAddressData = function (socket){
     delete this.addressData[socket.id];
   }
   this.broadcastGameState = function (eventName){
     const gameState = {
       ...this.gameState,
+      timestamp: performance.now(),
       players: {
         online: Object.keys(this.gameClients).length,
         addressData: this.addressData
@@ -104,7 +108,7 @@ function GameServer(){
     }
     Object.keys(this.gameClients).forEach((gameClientSocket) => {
       this.gameClients[gameClientSocket].emit(eventName, gameState, async (response) => {
-        ll.debug(`socket: ${eventName}`, response);
+        // ll.debug(`socket: ${eventName}`, response);
       });
     })
   }
@@ -149,6 +153,21 @@ function Main(){
         server.removeAuthClient(socket);
         server.removeGameClient(socket);
         server.removeAddressData(socket);
+        // remove all player positions
+        let tempGameState = server.getGameState();
+        let addressData = server.getAddressData(socket);
+        let currentAddress = !!addressData ? addressData.address : null;
+        Object.keys(tempGameState.playerPositions).forEach(socketId => {
+          if(
+            socketId === socket.id
+            ||
+            currentAddress && (tempGameState.playerPositions[socketId].address === currentAddress)
+          ){
+            delete tempGameState.playerPositions[socketId];
+          }
+        });
+        server.setGameState(tempGameState);
+
         printServerState();
       })
       socket.on("command-req", (data, callback) => {
@@ -156,16 +175,16 @@ function Main(){
         let authSockets = server.getAuthClientSockets();
         Object.keys(authSockets).forEach((authSocketId) => {
           authSockets[authSocketId].emit("auth-req", data, async (response) => {
-            ll.debug("socket: auth-res", response);
+            // ll.debug("socket: auth-res", response);
             // verify the data
             let network = process.env.NETWORK;
             let message = response.data;
             let signingResponse = response.signed;
             let originatorAddress = data.headers.address;
             let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            ll.debug(`socket: auth-res verifies: ${verifies}`, {
+            /*ll.debug(`socket: auth-res verifies: ${verifies}`, {
               network, message, signingResponse, originatorAddress
-            });
+            });*/
             if(verifies){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
@@ -181,20 +200,20 @@ function Main(){
         })
       });
       socket.on("player-id", (data, callback) => {
-        ll.debug("socket: player-id", data);
+        // ll.debug("socket: player-id", data);
         let authSockets = server.getAuthClientSockets();
         Object.keys(authSockets).forEach((authSocketId) => {
           authSockets[authSocketId].emit("auth-req", data, async (response) => {
-            ll.debug("socket: auth-res", response);
+            // ll.debug("socket: auth-res", response);
             // verify the data
             let network = process.env.NETWORK;
             let message = response.data;
             let signingResponse = response.signed;
             let originatorAddress = data.headers.address;
             let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            ll.debug(`socket: auth-res verifies: ${verifies}`, {
+            /*ll.debug(`socket: auth-res verifies: ${verifies}`, {
               network, message, signingResponse, originatorAddress
-            });
+            });*/
             if(verifies){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
@@ -215,16 +234,16 @@ function Main(){
         let authSockets = server.getAuthClientSockets();
         Object.keys(authSockets).forEach((authSocketId) => {
           authSockets[authSocketId].emit("auth-req", playerActionData, async (response) => {
-            ll.debug("socket: auth-res", response);
+            // ll.debug("socket: auth-res", response);
             // verify the data
             let network = process.env.NETWORK;
             let message = response.data;
             let signingResponse = response.signed;
             let originatorAddress = playerActionData.headers.address;
             let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            ll.debug(`socket: auth-res verifies: ${verifies}`, {
+            /*ll.debug(`socket: auth-res verifies: ${verifies}`, {
               network, message, signingResponse, originatorAddress
-            });
+            });*/
             if(verifies){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, playerActionData.headers.address)
@@ -238,6 +257,7 @@ function Main(){
                 position: playerActionData.payload.payload
               }
               server.setGameState(tempGameState)
+              printServerState();
 
               callback({
                 verifies,
@@ -268,3 +288,8 @@ main.startClientUpdates(server);
 let port = process.env.PORT;
 httpServer.listen(port);
 ll.debug("websocket server is listening on port " + port +  ". on the " + process.env.NETWORK);
+
+//catches uncaught exceptions
+process.on('uncaughtException', (e) => {
+  console.error("this should not have happened", e)
+});
