@@ -15,6 +15,15 @@ const CardanoWasm = CardanoWasmModule;
 function Verifier(){
   this.CardanoWasm = CardanoWasm;
   this.BIP39 = BIP39;
+  this.getAddressPrefix = function (network){
+    if(network === "mainnet"){
+      return "addr";
+    } else if(network === "testnet") {
+      return "addr_test";
+    } else {
+      throw new Error("unknown network");
+    }
+  }
   this.verify = function (network, message, verificationResponseMessage, originatorAddress){
     let parsedSigned = JSON.parse(verificationResponseMessage);
     let payload = parsedSigned.payload;
@@ -38,7 +47,7 @@ function Verifier(){
         this.CardanoWasm.StakeCredential.from_keyhash(key_pub.to_raw_key().hash()),
         this.CardanoWasm.StakeCredential.from_keyhash(stake_key_pub.to_raw_key().hash()),
       ).to_address();
-      let reconstructedBaseAddress_bech32 = reconstructedBaseAddress.to_bech32("addr");
+      let reconstructedBaseAddress_bech32 = reconstructedBaseAddress.to_bech32(this.getAddressPrefix(network));
       addressCanBeDerivedFromPublicKeys = reconstructedBaseAddress_bech32 === originatorAddress;
     } else {
       throw new Error("could not verify the message signature. ensure that the public keys include the key_pub_bech32 and stake_key_public_raw_hash keys.");

@@ -258,9 +258,9 @@ function Main(){
             let signingResponse = response.signed;
             let originatorAddress = playerActionData.headers.address;
             let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            /*ll.debug(`socket: auth-res verifies: ${verifies}`, {
+            ll.debug(`socket: auth-res verifies: ${verifies}`, {
               network, message, signingResponse, originatorAddress
-            });*/
+            });
             if(verifies){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, playerActionData.headers.address)
