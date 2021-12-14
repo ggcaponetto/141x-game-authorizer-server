@@ -267,15 +267,39 @@ function Main(){
               let addressData = addressDataResponse ? addressDataResponse.data : null;
               server.setAddressData(socket, addressData);
 
-              // update the game state
-              let tempGameState = server.getGameState();
-              tempGameState.playerPositions[originatorAddress] = {
-                address: originatorAddress,
-                position: playerActionData.payload.payload
+              if(
+                playerActionData.payload.type === "move"
+              ){
+                // update the game state
+                let tempGameState = server.getGameState();
+                tempGameState.playerPositions[originatorAddress] = {
+                  address: originatorAddress,
+                  position: playerActionData.payload.payload
+                }
+                server.setGameState(tempGameState)
+              } else if(
+                playerActionData.payload.type === "buy-land"
+              ){
+                // update the game state
+                let tempGameState = server.getGameState();
+                const alreadyOwnsLand = (
+                  tempGameState.playerItems[originatorAddress] && tempGameState.playerItems[originatorAddress].land && tempGameState.playerItems[originatorAddress].land.length > 0
+                ) === true;
+                ll.debug(`socket: buy-land - already owns land: ${alreadyOwnsLand.toString()}`, {
+                  alreadyOwnsLand, tempGameState
+                });
+                tempGameState.playerItems[originatorAddress] = {
+                  address: originatorAddress,
+                  land: alreadyOwnsLand ? [
+                    ...tempGameState.playerItems[originatorAddress].land,
+                    playerActionData.payload.payload
+                  ] : [
+                    playerActionData.payload.payload
+                  ]
+                }
+                server.setGameState(tempGameState)
               }
-              server.setGameState(tempGameState)
               printServerState();
-
               callback({
                 verifies,
                 addressData,
