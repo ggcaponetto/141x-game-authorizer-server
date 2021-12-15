@@ -7,6 +7,8 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 
 const {Verifier} = require("./components/verifier/verifier.js");
+const {LandUtil} = require("./components/land-verification/land-verification.js");
+
 
 const loglevel =  require('loglevel');
 const ll = loglevel.getLogger('main');
@@ -109,6 +111,7 @@ function GameServer(){
       timestamp: performance.now(),
       players: {
         online: Object.keys(this.gameClients).length,
+        total: Object.keys(this.gameState.playerPositions).length,
         addressData: this.addressData
       }
     }
@@ -228,9 +231,9 @@ function Main(){
             let signingResponse = response.signed;
             let originatorAddress = data.headers.address;
             let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            /*ll.debug(`socket: auth-res verifies: ${verifies}`, {
+            ll.debug(`socket: auth-res verifies: ${verifies}`, {
               network, message, signingResponse, originatorAddress
-            });*/
+            });
             if(verifies){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
@@ -241,10 +244,10 @@ function Main(){
                 addressData,
                 gameGameState: server.getGameState()
               })
-              server.broadcastGameState("game-state");
             }
           });
         })
+        server.broadcastGameState("game-state");
       });
       socket.on("player-action", (playerActionData, callback) => {
         ll.debug("socket: player-action", playerActionData);
@@ -282,22 +285,75 @@ function Main(){
               ){
                 // update the game state
                 let tempGameState = server.getGameState();
-                const alreadyOwnsLand = (
-                  tempGameState.playerItems[originatorAddress] && tempGameState.playerItems[originatorAddress].land && tempGameState.playerItems[originatorAddress].land.length > 0
-                ) === true;
-                ll.debug(`socket: buy-land - already owns land: ${alreadyOwnsLand.toString()}`, {
-                  alreadyOwnsLand, tempGameState
-                });
-                tempGameState.playerItems[originatorAddress] = {
-                  address: originatorAddress,
-                  land: alreadyOwnsLand ? [
-                    ...tempGameState.playerItems[originatorAddress].land,
-                    playerActionData.payload.payload
-                  ] : [
-                    playerActionData.payload.payload
-                  ]
+                // verify if the land is available
+                let landUtil = new LandUtil();
+                ll.debug(`socket: buy-land - verifying if the land is buyable`, playerActionData);
+                let isBuyable = landUtil.isBuyable(playerActionData.payload.payload, tempGameState)
+                ll.debug(`socket: buy-land - the land is buyable: ${isBuyable.toString()}`, playerActionData.payload);
+                if(isBuyable){
+                  const alreadyOwnsLand = (
+                    tempGameState.playerItems[originatorAddress] && tempGameState.playerItems[originatorAddress].land && tempGameState.playerItems[originatorAddress].land.length > 0
+                  ) === true;
+                  ll.debug(`socket: buy-land - already owns land: ${alreadyOwnsLand.toString()}`, {
+                    alreadyOwnsLand, tempGameState
+                  });
+                  tempGameState.playerItems[originatorAddress] = {
+                    address: originatorAddress,
+                    land: alreadyOwnsLand ? [
+                      ...tempGameState.playerItems[originatorAddress].land,
+                      playerActionData.payload.payload
+                    ] : [
+                      playerActionData.payload.payload
+                    ]
+                  }
+                  server.setGameState(tempGameState)
                 }
+              } else if(
+                playerActionData.payload.type === "edit-land"
+              ){
+                // update the game state
+                let tempGameState = server.getGameState();
+                ll.debug(`socket: edit-land`);
+                tempGameState.playerItems[originatorAddress].land = tempGameState.playerItems[originatorAddress].land.map(land => {
+                  let savedFC = JSON.stringify(land);
+                  let newFC = JSON.stringify(playerActionData.payload.payload.original);
+                  if(savedFC === newFC){
+                    return playerActionData.payload.payload.edited;
+                  } else {
+                    return land;
+                  }
+                })
                 server.setGameState(tempGameState)
+                printServerState();
+                callback({
+                  verifies,
+                  addressData,
+                  gameGameState: server.getGameState()
+                })
+                server.broadcastGameState("game-state");
+              }  else if(
+                playerActionData.payload.type === "release-land"
+              ){
+                // update the game state
+                let tempGameState = server.getGameState();
+                // verify if the land is available
+                let landUtil = new LandUtil();
+                ll.debug(`socket: release-land`, {
+                  playerActionData, tempGameState
+                });
+                if(
+                  tempGameState.playerItems[originatorAddress]
+                  && Array.isArray(tempGameState.playerItems[originatorAddress].land)
+                ){
+                  tempGameState.playerItems[originatorAddress].land = tempGameState.playerItems[originatorAddress].land.filter(landFeatureCollection => {
+                    if(JSON.stringify(landFeatureCollection) === JSON.stringify(playerActionData.payload.payload)){
+                      return false;
+                    } else {
+                      return true;
+                    }
+                  })
+                  server.setGameState(tempGameState)
+                }
               }
               printServerState();
               callback({
