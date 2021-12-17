@@ -24,8 +24,25 @@ function LandUtil(){
     }
     return isBuyable;
   }
+  function getTotalLandExtension(address, parsedGameState){
+    let totalSquareMeters = 0;
+    parsedGameState.playerItems[address].land.forEach(landFeatureCollection => {
+      totalSquareMeters = totalSquareMeters + getTotalLandExtensionOfFeatureCollection(landFeatureCollection);
+    })
+    return totalSquareMeters;
+  }
+  function getTotalLandExtensionOfFeatureCollection(landFeatureCollection){
+    let area = turf.area(landFeatureCollection);
+    return area;
+  }
+  function areaToAssetQuantity(gameAsset, area){
+    return gameAsset.ratio * area;
+  }
   return {
-    isBuyable
+    isBuyable,
+    getTotalLandExtension,
+    areaToAssetQuantity,
+    getTotalLandExtensionOfFeatureCollection
   }
 }
 

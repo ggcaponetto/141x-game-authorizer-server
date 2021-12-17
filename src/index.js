@@ -50,7 +50,17 @@ const options = {
 };
 const io = new Server(httpServer, options);
 
+const landUtil = new LandUtil();
+
 function GameServer(){
+  this.getAssets = function (){ return this.assets }
+  this.assets = {
+    land: {
+      type: "land",
+      unit: "lovelace",
+      ratio: 1
+    }
+  }
   this.sockets = {};
   this.gameClients = {};
   this.authClients = {};
@@ -63,6 +73,42 @@ function GameServer(){
     }
   }
   this.addressData = {};
+  this.lockedResources = {
+
+  };
+
+  this.setLockedResources = function (lockedResources){
+    this.lockedResources = lockedResources;
+  }
+  this.getLockedResources = function (){
+    return this.lockedResources;
+  }
+  this.computeLockedResources = function (gameState, landUtil){
+    let lockedResources = {}
+    Object.keys(gameState.playerItems).forEach(address => {
+      lockedResources[address] = lockedResources[address] === undefined ? {} : lockedResources[address]
+      let area = landUtil.getTotalLandExtension(address, gameState);
+      lockedResources[address].land = {
+        "unit": this.assets.land.unit,
+        "quantity": area * this.assets.land.ratio
+      };
+    })
+    return lockedResources;
+  }
+  this.hasEnoughFunds = function (address, assetQuantity, asset, lockedResources, playerAddressData){
+    let alreadyLocked = parseFloat(lockedResources[address][asset.type].quantity);
+    let assetInWallet = playerAddressData.amount.find(addresDataElement => {
+      return addresDataElement.unit === asset.unit
+    });
+    if(assetInWallet){
+      let quantityInWallet = parseFloat(assetInWallet.quantity) || 0;
+      let remaining = quantityInWallet - alreadyLocked - assetQuantity;
+      return remaining >= 0;
+    } else {
+      return false;
+    }
+  }
+
   this.add = function (socket){
     this.sockets[socket.id] = socket;
   }
@@ -96,14 +142,14 @@ function GameServer(){
   this.getGameState = function (){
     return this.gameState;
   }
-  this.setAddressData = function (socket, addressData){
-    this.addressData[socket.id] = addressData;
+  this.setAddressData = function (address, addressData){
+    this.addressData[address] = addressData;
   }
-  this.getAddressData = function (socket){
-    return this.addressData[socket.id];
+  this.getAddressData = function (address){
+    return this.addressData[address];
   }
-  this.removeAddressData = function (socket){
-    delete this.addressData[socket.id];
+  this.removeAddressData = function (address){
+    delete this.addressData[address];
   }
   this.broadcastGameState = function (eventName){
     const gameState = {
@@ -112,7 +158,8 @@ function GameServer(){
       players: {
         online: Object.keys(this.gameClients).length,
         total: Object.keys(this.gameState.playerPositions).length,
-        addressData: this.addressData
+        addressData: this.addressData,
+        lockedResources: this.lockedResources
       }
     }
     Object.keys(this.gameClients).forEach((gameClientSocket) => {
@@ -203,6 +250,8 @@ function Main(){
           server.addAuthClient(socket);
         } else if(data.payload === "game-client"){
           server.addGameClient(socket);
+          let lockedResources = server.computeLockedResources(server.getGameState(), landUtil)
+          server.setLockedResources(lockedResources);
           server.broadcastGameState("game-state");
         }
         printServerState();
@@ -238,7 +287,7 @@ function Main(){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
               let addressData = addressDataResponse ? addressDataResponse.data : null;
-              server.setAddressData(socket, addressData);
+              server.setAddressData(originatorAddress, addressData);
               callback({
                 verifies,
                 addressData,
@@ -268,7 +317,7 @@ function Main(){
               // verify the account status and give a response to the game client
               let addressDataResponse = await verifier.getAccountData(network, playerActionData.headers.address)
               let addressData = addressDataResponse ? addressDataResponse.data : null;
-              server.setAddressData(socket, addressData);
+              server.setAddressData(originatorAddress, addressData);
 
               if(
                 playerActionData.payload.type === "move"
@@ -286,11 +335,30 @@ function Main(){
                 // update the game state
                 let tempGameState = server.getGameState();
                 // verify if the land is available
-                let landUtil = new LandUtil();
                 ll.debug(`socket: buy-land - verifying if the land is buyable`, playerActionData);
                 let isBuyable = landUtil.isBuyable(playerActionData.payload.payload, tempGameState)
                 ll.debug(`socket: buy-land - the land is buyable: ${isBuyable.toString()}`, playerActionData.payload);
-                if(isBuyable){
+
+                // verify if the player has enought funds
+                let tempLockedResources = server.computeLockedResources(server.getGameState(), landUtil)
+                server.setLockedResources(tempLockedResources);
+                let landAsset = server.getAssets().land;
+                let landArea = landUtil.getTotalLandExtensionOfFeatureCollection(playerActionData.payload.payload);
+                let assetQuantity = landUtil.areaToAssetQuantity(landAsset, landArea);
+                let lockedResources = server.getLockedResources();
+                let playerAddressData = addressData;
+                let playerHasEnoughFunds = server.hasEnoughFunds(
+                  originatorAddress,
+                  assetQuantity,
+                  landAsset,
+                  lockedResources,
+                  playerAddressData
+                )
+                ll.debug(`socket: buy-land - the player has enough funds: ${playerHasEnoughFunds.toString()}`, {
+                  landAsset, landArea, addressData: this.addressData
+                });
+
+                if(isBuyable && playerHasEnoughFunds){
                   const alreadyOwnsLand = (
                     tempGameState.playerItems[originatorAddress] && tempGameState.playerItems[originatorAddress].land && tempGameState.playerItems[originatorAddress].land.length > 0
                   ) === true;
@@ -307,6 +375,21 @@ function Main(){
                     ]
                   }
                   server.setGameState(tempGameState)
+                } else {
+                  if(!playerHasEnoughFunds)
+                  server.setGameState(tempGameState)
+                  printServerState();
+                  callback({
+                    error: true,
+                    message: "not-enough-funds",
+                    data: {
+                      verifies,
+                      landAsset,
+                      landArea,
+                      lockedResources,
+                      playerAddressData
+                    }
+                  })
                 }
               } else if(
                 playerActionData.payload.type === "edit-land"
@@ -355,6 +438,8 @@ function Main(){
                   server.setGameState(tempGameState)
                 }
               }
+              let lockedResources = server.computeLockedResources(server.getGameState(), landUtil)
+              server.setLockedResources(lockedResources);
               printServerState();
               callback({
                 verifies,

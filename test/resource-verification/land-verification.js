@@ -1,27 +1,26 @@
-const LandUtil = require('../../src/components/land-verification/land-verification').LandUtil
-const gameState = require('./mock/test-game-state.json')
-const fs = require('fs')
-const path = require('path')
-const chai = require('chai')
-const { GameServer } = require('../../src')
+const LandUtil = require("../../src/components/land-verification/land-verification").LandUtil
+const gameState = require("./mock/test-game-state.json");
+const fs = require("fs");
+const path = require("path");
+const chai = require("chai");
 
-describe('LandUtil', function () {
-  it('recognize not buyable land', async function () {
-    let landUtil = new LandUtil()
+describe('LandUtil', function() {
+  it('recognize not buyable land', async function() {
+    let landUtil = new LandUtil();
     let mockLandToBuy = {
-      'playerItems': {
-        'somePlayer': {
-          'address': 'somePlayer',
-          'land': [
+      "playerItems": {
+        "somePlayer": {
+          "address": "somePlayer",
+          "land": [
             {
-              'type': 'FeatureCollection',
-              'features': [
+              "type": "FeatureCollection",
+              "features": [
                 {
-                  'id': 'e705e2f78e44d72d8b02ebbed774f840',
-                  'type': 'Feature',
-                  'properties': {},
-                  'geometry': {
-                    'coordinates': [
+                  "id": "e705e2f78e44d72d8b02ebbed774f840",
+                  "type": "Feature",
+                  "properties": {},
+                  "geometry": {
+                    "coordinates": [
                       [
                         [
                           -73.99032004211467,
@@ -81,20 +80,20 @@ describe('LandUtil', function () {
                         ]
                       ]
                     ],
-                    'type': 'Polygon'
+                    "type": "Polygon"
                   }
                 }
               ]
             },
             {
-              'type': 'FeatureCollection',
-              'features': [
+              "type": "FeatureCollection",
+              "features": [
                 {
-                  'id': '6ad4f468c6e3fd4c5b0d0edc4308c1ed',
-                  'type': 'Feature',
-                  'properties': {},
-                  'geometry': {
-                    'coordinates': [
+                  "id": "6ad4f468c6e3fd4c5b0d0edc4308c1ed",
+                  "type": "Feature",
+                  "properties": {},
+                  "geometry": {
+                    "coordinates": [
                       [
                         [
                           -73.98725908086325,
@@ -118,7 +117,7 @@ describe('LandUtil', function () {
                         ]
                       ]
                     ],
-                    'type': 'Polygon'
+                    "type": "Polygon"
                   }
                 }
               ]
@@ -127,26 +126,26 @@ describe('LandUtil', function () {
         }
       }
     }.playerItems.somePlayer.land[0]
-    let mockGameState = gameState
-    let isBuyable = landUtil.isBuyable(mockLandToBuy, mockGameState)
-    chai.expect(isBuyable).to.equal(false)
-  })
-  it('recognize buyable land', async function () {
-    let landUtil = new LandUtil()
+    let mockGameState = gameState;
+    let isBuyable = landUtil.isBuyable(mockLandToBuy, mockGameState);
+    chai.expect(isBuyable).to.equal(false);
+  });
+  it('recognize buyable land', async function() {
+    let landUtil = new LandUtil();
     let mockLandToBuy = {
-      'playerItems': {
-        'somePlayer': {
-          'address': 'somePlayer',
-          'land': [
+      "playerItems": {
+        "somePlayer": {
+          "address": "somePlayer",
+          "land": [
             {
-              'type': 'FeatureCollection',
-              'features': [
+              "type": "FeatureCollection",
+              "features": [
                 {
-                  'type': 'Feature',
-                  'properties': {},
-                  'geometry': {
-                    'type': 'Polygon',
-                    'coordinates': [
+                  "type": "Feature",
+                  "properties": {},
+                  "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
                       [
                         [
                           -1874.0112018585205,
@@ -178,35 +177,8 @@ describe('LandUtil', function () {
         }
       }
     }.playerItems.somePlayer.land[0]
-    let mockGameState = gameState
-    let isBuyable = landUtil.isBuyable(mockLandToBuy, mockGameState)
-    chai.expect(isBuyable).to.equal(true)
-  })
-  it.only('calculate the total extension of land owned by a player', function () {
-    let landUtil = new LandUtil()
-    let mockGameState = {
-      'playerItems': {
-        'somePlayer': {
-          'address': 'somePlayer',
-          'land': [{
-            'type': 'FeatureCollection',
-            'features': [{
-              'id': 'f621a27d808c681c993c9e53b59176a3',
-              'type': 'Feature',
-              'properties': { 'label': 'Los Angeles' },
-              'geometry': {
-                'coordinates': [[[-73.99394881417176, 40.72035935508734], [-73.99278703775454, 40.720009554135515], [-73.99099239794599, 40.723775066746526], [-73.99266218713358, 40.72429600684495], [-73.99394881417176, 40.72035935508734]]],
-                'type': 'Polygon'
-              }
-            }]
-          }]
-        }
-      }
-    }
-    let area = landUtil.getTotalLandExtension('somePlayer', mockGameState);
-    let gs = new GameServer();
-    let ls = gs.computeLockedResources(mockGameState, landUtil);
-    chai.expect(area).to.equal(57505.75942380931);
-    chai.expect(ls["somePlayer"].land.quantity).to.equal(57505.75942380931)
-  })
-})
+    let mockGameState = gameState;
+    let isBuyable = landUtil.isBuyable(mockLandToBuy, mockGameState);
+    chai.expect(isBuyable).to.equal(true);
+  });
+});
