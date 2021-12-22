@@ -5,12 +5,9 @@ function LandUtil(){
     let isBuyable = true;
     if(parsedGameState){
       // update all player items
-      if(
-        parsedGameState
-        && parsedGameState.playerItems
-      ) {
-        Object.keys(parsedGameState.playerItems).forEach(address => {
-          parsedGameState.playerItems[address].land.forEach((land) => {
+      if(parsedGameState?.gameState?.playerItems) {
+        Object.keys(parsedGameState.gameState.playerItems).forEach(address => {
+          parsedGameState.gameState.playerItems[address].land.forEach((land) => {
             land.features.forEach((feature) => {
               landToBuy.features.forEach((featureToBuy) => {
                 if(turf.booleanIntersects(featureToBuy, feature)){
@@ -26,7 +23,7 @@ function LandUtil(){
   }
   function getTotalLandExtension(address, parsedGameState){
     let totalSquareMeters = 0;
-    parsedGameState.playerItems[address].land.forEach(landFeatureCollection => {
+    (parsedGameState?.gameState?.playerItems[address]?.land || []).forEach(landFeatureCollection => {
       totalSquareMeters = totalSquareMeters + getTotalLandExtensionOfFeatureCollection(landFeatureCollection);
     })
     return totalSquareMeters;

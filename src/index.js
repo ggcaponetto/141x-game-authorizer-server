@@ -53,7 +53,6 @@ const io = new Server(httpServer, options);
 const landUtil = new LandUtil();
 
 function GameServer(){
-  this.getAssets = function (){ return this.assets }
   this.assets = {
     land: {
       type: "land",
@@ -70,19 +69,20 @@ function GameServer(){
     },
     playerPositions: {
 
+    },
+    playerResources: {
+      addressData: {
+
+      },
+      lockedResources: {
+
+      }
     }
   }
-  this.addressData = {};
-  this.lockedResources = {
+  this.addressSocketMap = {
 
-  };
+  }
 
-  this.setLockedResources = function (lockedResources){
-    this.lockedResources = lockedResources;
-  }
-  this.getLockedResources = function (){
-    return this.lockedResources;
-  }
   this.computeLockedResources = function (gameState, landUtil){
     let lockedResources = {}
     Object.keys(gameState.playerItems).forEach(address => {
@@ -96,7 +96,17 @@ function GameServer(){
     return lockedResources;
   }
   this.hasEnoughFunds = function (address, assetQuantity, asset, lockedResources, playerAddressData){
-    let alreadyLocked = parseFloat(lockedResources[address][asset.type].quantity);
+    let alreadyLocked = (()=>{
+      if(
+        lockedResources[address]
+        && lockedResources[address][asset.type]
+        && lockedResources[address][asset.type].quantity
+      ){
+        return parseFloat(lockedResources[address][asset.type].quantity);
+      } else {
+        return 0;
+      }
+    })();
     let assetInWallet = playerAddressData.amount.find(addresDataElement => {
       return addresDataElement.unit === asset.unit
     });
@@ -108,62 +118,9 @@ function GameServer(){
       return false;
     }
   }
-
-  this.add = function (socket){
-    this.sockets[socket.id] = socket;
-  }
-  this.addGameClient= function (socket){
-    this.gameClients[socket.id] = socket;
-  }
-  this.addAuthClient= function (socket){
-    this.authClients[socket.id] = socket;
-  }
-  this.remove = function (socket){
-    delete this.sockets[socket.id];
-  }
-  this.removeGameClient= function (socket){
-    delete this.gameClients[socket.id];
-  }
-  this.removeAuthClient= function (socket){
-    delete this.authClients[socket.id];
-  }
-  this.getSockets = function (){
-    return this.sockets;
-  }
-  this.getGameClientSockets = function (){
-    return this.gameClients;
-  }
-  this.getAuthClientSockets = function (){
-    return this.authClients;
-  }
-  this.setGameState = function (newGameState){
-    this.gameState = newGameState;
-  }
-  this.getGameState = function (){
-    return this.gameState;
-  }
-  this.setAddressData = function (address, addressData){
-    this.addressData[address] = addressData;
-  }
-  this.getAddressData = function (address){
-    return this.addressData[address];
-  }
-  this.removeAddressData = function (address){
-    delete this.addressData[address];
-  }
-  this.broadcastGameState = function (eventName){
-    const gameState = {
-      ...this.gameState,
-      timestamp: performance.now(),
-      players: {
-        online: Object.keys(this.gameClients).length,
-        total: Object.keys(this.gameState.playerPositions).length,
-        addressData: this.addressData,
-        lockedResources: this.lockedResources
-      }
-    }
+  this.broadcastGameState = (eventName, data = this.gameState) => {
     Object.keys(this.gameClients).forEach((gameClientSocket) => {
-      this.gameClients[gameClientSocket].emit(eventName, gameState, async (response) => {
+      this.gameClients[gameClientSocket].emit(eventName, data, async (response) => {
         // ll.debug(`socket: ${eventName}`, response);
       });
     })
@@ -215,23 +172,58 @@ function GameServer(){
   this.stopAutosave = function (){
     clearInterval(this.autosaveHandle);
   }
+  this.validateGameClientRequest = function (data){
+    if(!data?.headers?.address || !data?.payload){
+      ll.error("Invalid game client request.", data);
+      throw new Error(`Invalid game client request.`);
+    }
+    return true;
+  }
+  this.verifyGameClientRequest = function (verifier, data, onVerificationDone){
+    ll.debug("socket: verifyGameClientRequest", {
+      server, data
+    });
+    Object.keys(server.authClients).forEach((authSocketId) => {
+      server.authClients[authSocketId].emit("auth-req", data, (response) => {
+        // ll.debug("socket: auth-res", response);
+        // verify the data
+        server.validateGameClientRequest(data);
+        let network = process.env.NETWORK;
+        let message = response.data;
+        let signingResponse = response.signed;
+        let originatorAddress = data.headers.address;
+        let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
+        ll.debug(`socket: auth-res verifies: ${verifies}`, {
+          network, message, signingResponse, originatorAddress
+        });
+        onVerificationDone({
+          verifies,
+          originatorAddress,
+          network,
+          message,
+          signingResponse,
+          authSocketId
+        });
+      });
+    })
+  }
 }
 
 const server = new GameServer();
-server.loadGameState( path.resolve(`${__dirname}/../mounted/saves/game-state-latest.json`));
-server.startAutosave(5000, path.resolve(`${__dirname}/../mounted/saves/game-state.json`), { historized: false });
+// server.loadGameState( path.resolve(`${__dirname}/../mounted/saves/game-state-latest.json`));
+// server.startAutosave(5000, path.resolve(`${__dirname}/../mounted/saves/game-state.json`), { historized: false });
 
 const verifier = new Verifier();
 const printServerState = () => {
-  let allSockets = Object.keys(server.getSockets());
-  let allGameClientSockets = Object.keys(server.getGameClientSockets());
-  let allAuthClientSockets = Object.keys(server.getAuthClientSockets());
-  let gameState = server.getGameState();
+  let allSockets = Object.keys(server.sockets);
+  let allGameClientSockets = Object.keys(server.gameClients);
+  let allAuthClientSockets = Object.keys(server.authClients);
   ll.debug(`${allSockets.length} clients are connected`, {
+    gameState: server.gameState,
     allSockets,
     allGameClientSockets,
     allAuthClientSockets,
-    gameState
+    addressSocketMap: server.addressSocketMap
   });
 }
 
@@ -239,114 +231,100 @@ function Main(){
   this.run = function (server, verifier){
     io.on("connection", (socket) => {
       ll.debug("socket: connection", socket.id);
-      server.add(socket);
+      server.sockets[socket.id] = socket;
       printServerState();
-      socket.on("set-client-type", (data) => {
-        ll.debug("socket: set-client-type", {
-          data,
-          socketId: socket.id
-        });
-        if(data.payload === "auth-client"){
-          server.addAuthClient(socket);
-        } else if(data.payload === "game-client"){
-          server.addGameClient(socket);
-          let lockedResources = server.computeLockedResources(server.getGameState(), landUtil)
-          server.setLockedResources(lockedResources);
-          server.broadcastGameState("game-state");
-        }
-        printServerState();
-      })
       socket.on("disconnect", () => {
         ll.debug("socket: disconnect", socket.id);
-        server.remove(socket);
-        server.removeAuthClient(socket);
-        server.removeGameClient(socket);
-        server.removeAddressData(socket);
-        // remove all player positions
-        let tempGameState = server.getGameState();
-        server.setGameState(tempGameState);
+        let address = Object.keys(server.addressSocketMap)
+          .find(address => (
+            server.addressSocketMap[address].authSocketId === socket.id
+            || server.addressSocketMap[address].gameSocketId === socket.id
+          ))
+        delete server.gameState.playerResources.lockedResources[address];
+        delete server.gameState.playerResources.addressData[address];
 
+        delete server.sockets[socket.id];
+        delete server.authClients[socket.id];
+        delete server.gameClients[socket.id];
+        delete server.addressSocketMap[address];
+
+        server.broadcastGameState("game-state", null);
         printServerState();
       })
-      socket.on("player-id", (data, callback) => {
-        // ll.debug("socket: player-id", data);
-        let authSockets = server.getAuthClientSockets();
-        Object.keys(authSockets).forEach((authSocketId) => {
-          authSockets[authSocketId].emit("auth-req", data, async (response) => {
-            // ll.debug("socket: auth-res", response);
-            // verify the data
-            let network = process.env.NETWORK;
-            let message = response.data;
-            let signingResponse = response.signed;
-            let originatorAddress = data.headers.address;
-            let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            ll.debug(`socket: auth-res verifies: ${verifies}`, {
-              network, message, signingResponse, originatorAddress
-            });
-            if(verifies){
-              // verify the account status and give a response to the game client
-              let addressDataResponse = await verifier.getAccountData(network, data.headers.address)
-              let addressData = addressDataResponse ? addressDataResponse.data : null;
-              server.setAddressData(originatorAddress, addressData);
-              callback({
-                verifies,
-                addressData,
-                gameGameState: server.getGameState()
-              })
-            }
-          });
-        })
-        server.broadcastGameState("game-state");
-      });
-      socket.on("player-action", (playerActionData, callback) => {
-        ll.debug("socket: player-action", playerActionData);
-        let authSockets = server.getAuthClientSockets();
-        Object.keys(authSockets).forEach((authSocketId) => {
-          authSockets[authSocketId].emit("auth-req", playerActionData, async (response) => {
-            // ll.debug("socket: auth-res", response);
-            // verify the data
-            let network = process.env.NETWORK;
-            let message = response.data;
-            let signingResponse = response.signed;
-            let originatorAddress = playerActionData.headers.address;
-            let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-            ll.debug(`socket: auth-res verifies: ${verifies}`, {
-              network, message, signingResponse, originatorAddress
-            });
-            if(verifies){
-              // verify the account status and give a response to the game client
-              let addressDataResponse = await verifier.getAccountData(network, playerActionData.headers.address)
-              let addressData = addressDataResponse ? addressDataResponse.data : null;
-              server.setAddressData(originatorAddress, addressData);
 
+      function updateResources(data, callback){
+        server.verifyGameClientRequest(verifier, data, ({
+          verifies,
+          originatorAddress,
+          network,
+          message,
+          signingResponse,
+          authSocketId
+        }) => {
+          ll.debug("socket: updateResources", {
+            data, verifies, originatorAddress, network
+          });
+          if(verifies){
+            // authenticated reqeusts
+            const update = async () => {
+              let addressDataResponse = await verifier.getAccountData(network, originatorAddress)
+              let addressData = addressDataResponse?.data;
+              server.gameState.playerResources.addressData[originatorAddress] = addressData;
+              let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
+              server.gameState.playerResources.lockedResources[originatorAddress] = tempLockedResources;
+              server.broadcastGameState("game-state");
+              printServerState();
+            };
+            update();
+            // map the address to active sockets
+            server.addressSocketMap[originatorAddress] = {
+              authSocketId: authSocketId,
+              gameSocketId: socket.id
+            }
+          }
+        });
+      }
+      function updatePosition(data, callback){
+        server.verifyGameClientRequest(verifier, data, ({
+          verifies,
+          originatorAddress,
+          network,
+          message,
+          signingResponse,
+          authSocketId
+        }) => {
+          ll.debug("socket: updatePosition", {
+            data, verifies, originatorAddress, network
+          });
+          if(verifies){
+            // authenticated reqeusts
+            const update = async () => {
               if(
-                playerActionData.payload.type === "move"
+                data.payload.type === "move"
               ){
                 // update the game state
-                let tempGameState = server.getGameState();
-                tempGameState.playerPositions[originatorAddress] = {
+                server.gameState.playerPositions[originatorAddress] = {
                   address: originatorAddress,
-                  position: playerActionData.payload.payload
+                  position: data.payload.payload
                 }
-                server.setGameState(tempGameState)
               } else if(
-                playerActionData.payload.type === "buy-land"
+                data.payload.type === "buy-land"
               ){
                 // update the game state
-                let tempGameState = server.getGameState();
                 // verify if the land is available
-                ll.debug(`socket: buy-land - verifying if the land is buyable`, playerActionData);
-                let isBuyable = landUtil.isBuyable(playerActionData.payload.payload, tempGameState)
-                ll.debug(`socket: buy-land - the land is buyable: ${isBuyable.toString()}`, playerActionData.payload);
+                ll.debug(`socket: buy-land - verifying if the land is buyable`, data);
+                let isBuyable = landUtil.isBuyable(data.payload.payload, server.gameState)
+                ll.debug(`socket: buy-land - the land is buyable: ${isBuyable.toString()}`, data.payload);
 
                 // verify if the player has enought funds
-                let tempLockedResources = server.computeLockedResources(server.getGameState(), landUtil)
-                server.setLockedResources(tempLockedResources);
-                let landAsset = server.getAssets().land;
-                let landArea = landUtil.getTotalLandExtensionOfFeatureCollection(playerActionData.payload.payload);
+                let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
+                server.gameState.playerResources.lockedResources[originatorAddress] = tempLockedResources;
+
+                let landAsset = server.assets.land;
+                let landArea = landUtil.getTotalLandExtensionOfFeatureCollection(data.payload.payload);
                 let assetQuantity = landUtil.areaToAssetQuantity(landAsset, landArea);
-                let lockedResources = server.getLockedResources();
-                let playerAddressData = addressData;
+                let lockedResources = server.gameState.playerResources.lockedResources;
+                let playerAddressData = server.gameState.playerResources.addressData[originatorAddress];
                 let playerHasEnoughFunds = server.hasEnoughFunds(
                   originatorAddress,
                   assetQuantity,
@@ -360,24 +338,21 @@ function Main(){
 
                 if(isBuyable && playerHasEnoughFunds){
                   const alreadyOwnsLand = (
-                    tempGameState.playerItems[originatorAddress] && tempGameState.playerItems[originatorAddress].land && tempGameState.playerItems[originatorAddress].land.length > 0
+                    server.gameState.playerItems[originatorAddress] && server.gameState.playerItems[originatorAddress].land && server.gameState.playerItems[originatorAddress].land.length > 0
                   ) === true;
                   ll.debug(`socket: buy-land - already owns land: ${alreadyOwnsLand.toString()}`, {
-                    alreadyOwnsLand, tempGameState
+                    alreadyOwnsLand
                   });
-                  tempGameState.playerItems[originatorAddress] = {
+                  server.gameState.playerItems[originatorAddress] = {
                     address: originatorAddress,
                     land: alreadyOwnsLand ? [
-                      ...tempGameState.playerItems[originatorAddress].land,
-                      playerActionData.payload.payload
+                      ...server.gameState.playerItems[originatorAddress].land,
+                      data.payload.payload
                     ] : [
-                      playerActionData.payload.payload
+                      data.payload.payload
                     ]
                   }
-                  server.setGameState(tempGameState)
                 } else {
-                  if(!playerHasEnoughFunds)
-                  server.setGameState(tempGameState)
                   printServerState();
                   callback({
                     error: true,
@@ -392,64 +367,88 @@ function Main(){
                   })
                 }
               } else if(
-                playerActionData.payload.type === "edit-land"
+                data.payload.type === "edit-land"
               ){
                 // update the game state
-                let tempGameState = server.getGameState();
                 ll.debug(`socket: edit-land`);
-                tempGameState.playerItems[originatorAddress].land = tempGameState.playerItems[originatorAddress].land.map(land => {
+                server.gameState.playerItems[originatorAddress].land = server.gameState.playerItems[originatorAddress].land.map(land => {
                   let savedFC = JSON.stringify(land);
-                  let newFC = JSON.stringify(playerActionData.payload.payload.original);
+                  let newFC = JSON.stringify(data.payload.payload.original);
                   if(savedFC === newFC){
-                    return playerActionData.payload.payload.edited;
+                    return data.payload.payload.edited;
                   } else {
                     return land;
                   }
                 })
-                server.setGameState(tempGameState)
                 printServerState();
                 callback({
                   verifies,
-                  addressData,
-                  gameGameState: server.getGameState()
+                  gameGameState: server.gameState
                 })
                 server.broadcastGameState("game-state");
               }  else if(
-                playerActionData.payload.type === "release-land"
+                data.payload.type === "release-land"
               ){
-                // update the game state
-                let tempGameState = server.getGameState();
                 // verify if the land is available
                 let landUtil = new LandUtil();
                 ll.debug(`socket: release-land`, {
-                  playerActionData, tempGameState
+                  data
                 });
                 if(
-                  tempGameState.playerItems[originatorAddress]
-                  && Array.isArray(tempGameState.playerItems[originatorAddress].land)
+                  server.gameState.playerItems[originatorAddress]
+                  && Array.isArray(server.gameState.playerItems[originatorAddress].land)
                 ){
-                  tempGameState.playerItems[originatorAddress].land = tempGameState.playerItems[originatorAddress].land.filter(landFeatureCollection => {
-                    if(JSON.stringify(landFeatureCollection) === JSON.stringify(playerActionData.payload.payload)){
+                  server.gameState.playerItems[originatorAddress].land = server.gameState.playerItems[originatorAddress].land.filter(landFeatureCollection => {
+                    if(JSON.stringify(landFeatureCollection) === JSON.stringify(data.payload.payload)){
                       return false;
                     } else {
                       return true;
                     }
                   })
-                  server.setGameState(tempGameState)
                 }
               }
-              let lockedResources = server.computeLockedResources(server.getGameState(), landUtil)
-              server.setLockedResources(lockedResources);
+              let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
+              server.gameState.playerResources.lockedResources[originatorAddress] = tempLockedResources;
+
               printServerState();
               callback({
                 verifies,
-                addressData,
-                gameGameState: server.getGameState()
+                gameGameState: server.gameState
               })
               server.broadcastGameState("game-state");
+            };
+            update();
+            // map the address to active sockets
+            server.addressSocketMap[originatorAddress] = {
+              authSocketId: authSocketId,
+              gameSocketId: socket.id
             }
-          });
-        })
+          }
+        });
+      }
+      socket.on("set-client-type", (data, callback) => {
+        ll.debug("socket: set-client-type", data);
+        if(data.payload === "auth-client"){
+          // unauthenticated reqeusts
+          server.authClients[socket.id] = socket;
+          server.broadcastGameState("game-state");
+        } else if(data.payload === "game-client"){
+          server.validateGameClientRequest(data);
+          server.gameClients[socket.id] = socket;
+          if(data?.headers?.address){
+            updateResources(data, callback)
+          }
+        }
+        printServerState();
+      })
+      socket.on("player-id", (data, callback) => {
+        ll.debug("socket: player-id", data);
+        updateResources(data, callback)
+      });
+      socket.on("player-action", (data, callback) => {
+        ll.debug("socket: player-action", data);
+        updateResources(data, callback)
+        updatePosition(data, callback)
       });
     });
   }
@@ -465,7 +464,7 @@ function Main(){
 
 let main = new Main();
 main.run(server, verifier);
-main.startClientUpdates(server);
+// main.startClientUpdates(server);
 
 let port = process.env.PORT;
 httpServer.listen(port);
