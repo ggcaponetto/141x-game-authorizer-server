@@ -77,10 +77,10 @@ function GameServer(){
       lockedResources: {
 
       }
-    }
-  }
-  this.addressSocketMap = {
+    },
+    addressSocketMap: {
 
+    }
   }
 
   this.computeLockedResources = function (gameState, landUtil){
@@ -207,6 +207,13 @@ function GameServer(){
       });
     })
   }
+  this.notifyGameClients = function (data){
+    Object.keys(server.gameClients).forEach((gameClientSocketId) => {
+      server.gameClients[gameClientSocketId].emit("game-server-notification", data, (response) => {
+        ll.debug("socket: game-server-notification response", response);
+      });
+    })
+  }
 }
 
 const server = new GameServer();
@@ -223,7 +230,6 @@ const printServerState = () => {
     allSockets,
     allGameClientSockets,
     allAuthClientSockets,
-    addressSocketMap: server.addressSocketMap
   });
 }
 
@@ -235,10 +241,10 @@ function Main(){
       printServerState();
       socket.on("disconnect", () => {
         ll.debug("socket: disconnect", socket.id);
-        let address = Object.keys(server.addressSocketMap)
+        let address = Object.keys(server.gameState.addressSocketMap)
           .find(address => (
-            server.addressSocketMap[address].authSocketId === socket.id
-            || server.addressSocketMap[address].gameSocketId === socket.id
+            server.gameState.addressSocketMap[address].authSocketId === socket.id
+            || server.gameState.addressSocketMap[address].gameSocketId === socket.id
           ))
         delete server.gameState.playerResources.lockedResources[address];
         delete server.gameState.playerResources.addressData[address];
@@ -246,7 +252,7 @@ function Main(){
         delete server.sockets[socket.id];
         delete server.authClients[socket.id];
         delete server.gameClients[socket.id];
-        delete server.addressSocketMap[address];
+        delete server.gameState.addressSocketMap[address];
 
         server.broadcastGameState("game-state");
         printServerState();
@@ -277,7 +283,7 @@ function Main(){
             };
             update();
             // map the address to active sockets
-            server.addressSocketMap[originatorAddress] = {
+            server.gameState.addressSocketMap[originatorAddress] = {
               authSocketId: authSocketId,
               gameSocketId: socket.id
             }
@@ -419,7 +425,7 @@ function Main(){
             };
             update();
             // map the address to active sockets
-            server.addressSocketMap[originatorAddress] = {
+            server.gameState.addressSocketMap[originatorAddress] = {
               authSocketId: authSocketId,
               gameSocketId: socket.id
             }
@@ -431,7 +437,8 @@ function Main(){
         if(data.payload === "auth-client"){
           // unauthenticated reqeusts
           server.authClients[socket.id] = socket;
-          server.broadcastGameState("game-state");
+          // ping all clients so that they refresh all their addressData with an authenticated request.
+          server.notifyGameClients({ message: "new auth client joined server" })
         } else if(data.payload === "game-client"){
           server.validateGameClientRequest(data);
           server.gameClients[socket.id] = socket;
