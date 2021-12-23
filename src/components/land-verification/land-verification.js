@@ -23,7 +23,7 @@ function LandUtil(){
   }
   function getTotalLandExtension(address, parsedGameState){
     let totalSquareMeters = 0;
-    (parsedGameState?.gameState?.playerItems[address]?.land || []).forEach(landFeatureCollection => {
+    (parsedGameState?.playerItems[address]?.land || []).forEach(landFeatureCollection => {
       totalSquareMeters = totalSquareMeters + getTotalLandExtensionOfFeatureCollection(landFeatureCollection);
     })
     return totalSquareMeters;

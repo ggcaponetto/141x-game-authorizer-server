@@ -86,7 +86,7 @@ function GameServer(){
   this.computeLockedResources = function (gameState, landUtil){
     let lockedResources = {}
     Object.keys(gameState.playerItems).forEach(address => {
-      lockedResources[address] = lockedResources[address] === undefined ? {} : lockedResources[address]
+      lockedResources[address] = gameState.playerResources.lockedResources[address] === undefined ? {} : gameState.playerResources.lockedResources[address]
       let area = landUtil.getTotalLandExtension(address, gameState);
       lockedResources[address].land = {
         "unit": this.assets.land.unit,
@@ -210,8 +210,8 @@ function GameServer(){
 }
 
 const server = new GameServer();
-// server.loadGameState( path.resolve(`${__dirname}/../mounted/saves/game-state-latest.json`));
-// server.startAutosave(5000, path.resolve(`${__dirname}/../mounted/saves/game-state.json`), { historized: false });
+server.loadGameState( path.resolve(`${__dirname}/../mounted/saves/game-state-latest.json`));
+server.startAutosave(5000, path.resolve(`${__dirname}/../mounted/saves/game-state.json`), { historized: false });
 
 const verifier = new Verifier();
 const printServerState = () => {
@@ -248,7 +248,7 @@ function Main(){
         delete server.gameClients[socket.id];
         delete server.addressSocketMap[address];
 
-        server.broadcastGameState("game-state", null);
+        server.broadcastGameState("game-state");
         printServerState();
       })
 
@@ -271,7 +271,7 @@ function Main(){
               let addressData = addressDataResponse?.data;
               server.gameState.playerResources.addressData[originatorAddress] = addressData;
               let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
-              server.gameState.playerResources.lockedResources[originatorAddress] = tempLockedResources;
+              server.gameState.playerResources.lockedResources = tempLockedResources;
               server.broadcastGameState("game-state");
               printServerState();
             };
@@ -318,7 +318,7 @@ function Main(){
 
                 // verify if the player has enought funds
                 let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
-                server.gameState.playerResources.lockedResources[originatorAddress] = tempLockedResources;
+                server.gameState.playerResources.lockedResources = tempLockedResources;
 
                 let landAsset = server.assets.land;
                 let landArea = landUtil.getTotalLandExtensionOfFeatureCollection(data.payload.payload);
@@ -408,7 +408,7 @@ function Main(){
                 }
               }
               let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
-              server.gameState.playerResources.lockedResources[originatorAddress] = tempLockedResources;
+              server.gameState.playerResources.lockedResources = tempLockedResources;
 
               printServerState();
               callback({
