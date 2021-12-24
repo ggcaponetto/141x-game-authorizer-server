@@ -1,13 +1,38 @@
 let turf = require('@turf/turf');
 
-function LandUtil(){
-  function isBuyable(landToBuy, parsedGameState) {
-    let isBuyable = true;
-    if(parsedGameState){
+function Routine(){
+  this.verifyLandOwnership = function (landUtil, gameAsset, gameState, onInsufficientFundsDetected){
+    if(gameState){
       // update all player items
-      if(parsedGameState?.gameState?.playerItems) {
-        Object.keys(parsedGameState.gameState.playerItems).forEach(address => {
-          parsedGameState.gameState.playerItems[address].land.forEach((land) => {
+      if(gameState?.playerItems) {
+        Object.keys(gameState.playerItems).forEach(address => {
+          let totalLand = landUtil.getTotalLandExtension(address, gameState);
+          let totalUsedResources = landUtil.areaToAsset(gameAsset, totalLand)
+
+          let ownedResource = gameState.playerResources?.addressData[address]?.amount.find(amount => amount.unit === totalUsedResources.unit);
+          if(ownedResource){
+            let ownedResourceQuantitiy = parseFloat(ownedResource.quantity);
+            if(totalUsedResources.quantity > ownedResourceQuantitiy){
+              // drop the player items, the user moves his funds and doesn't have enough.
+              onInsufficientFundsDetected({
+                totalUsedResources, ownedResource, address
+              })
+            }
+          }
+        })
+      }
+    }
+  }
+}
+
+function LandUtil(){
+  function isBuyable(landToBuy, gameState) {
+    let isBuyable = true;
+    if(gameState){
+      // update all player items
+      if(gameState?.playerItems) {
+        Object.keys(gameState.playerItems).forEach(address => {
+          gameState.playerItems[address].land.forEach((land) => {
             land.features.forEach((feature) => {
               landToBuy.features.forEach((featureToBuy) => {
                 if(turf.booleanIntersects(featureToBuy, feature)){
@@ -21,9 +46,9 @@ function LandUtil(){
     }
     return isBuyable;
   }
-  function getTotalLandExtension(address, parsedGameState){
+  function getTotalLandExtension(address, gameState){
     let totalSquareMeters = 0;
-    (parsedGameState?.playerItems[address]?.land || []).forEach(landFeatureCollection => {
+    (gameState.playerItems[address]?.land || []).forEach(landFeatureCollection => {
       totalSquareMeters = totalSquareMeters + getTotalLandExtensionOfFeatureCollection(landFeatureCollection);
     })
     return totalSquareMeters;
@@ -32,17 +57,22 @@ function LandUtil(){
     let area = turf.area(landFeatureCollection);
     return area;
   }
-  function areaToAssetQuantity(gameAsset, area){
-    return gameAsset.ratio * area;
+  function areaToAsset(gameAsset, area){
+    return {
+      quantity: gameAsset.ratio * area,
+      unit: gameAsset.unit,
+      type: gameAsset.type
+    };
   }
   return {
     isBuyable,
     getTotalLandExtension,
-    areaToAssetQuantity,
+    areaToAsset,
     getTotalLandExtensionOfFeatureCollection
   }
 }
 
 module.exports = {
-  LandUtil
+  LandUtil,
+  Routine
 }

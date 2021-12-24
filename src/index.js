@@ -7,7 +7,7 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 
 const {Verifier} = require("./components/verifier/verifier.js");
-const {LandUtil} = require("./components/land-verification/land-verification.js");
+const {LandUtil, Routine} = require("./components/land-verification/land-verification.js");
 
 
 const loglevel =  require('loglevel');
@@ -53,17 +53,17 @@ const io = new Server(httpServer, options);
 const landUtil = new LandUtil();
 
 function GameServer(){
-  this.assets = {
-    land: {
-      type: "land",
-      unit: "lovelace",
-      ratio: 1
-    }
-  }
   this.sockets = {};
   this.gameClients = {};
   this.authClients = {};
   this.gameState = {
+    assets: {
+      land: {
+        type: "land",
+        unit: process.env.LAND_TOKEN_POLICYID,
+        ratio: process.env.LAND_TOKEN_RATIO
+      }
+    },
     playerItems: {
 
     },
@@ -89,8 +89,8 @@ function GameServer(){
       lockedResources[address] = gameState.playerResources.lockedResources[address] === undefined ? {} : gameState.playerResources.lockedResources[address]
       let area = landUtil.getTotalLandExtension(address, gameState);
       lockedResources[address].land = {
-        "unit": this.assets.land.unit,
-        "quantity": area * this.assets.land.ratio
+        "unit": gameState.assets.land.unit,
+        "quantity": area * gameState.assets.land.ratio
       };
     })
     return lockedResources;
@@ -221,6 +221,7 @@ server.loadGameState( path.resolve(`${__dirname}/../mounted/saves/game-state-lat
 server.startAutosave(5000, path.resolve(`${__dirname}/../mounted/saves/game-state.json`), { historized: false });
 
 const verifier = new Verifier();
+const routine = new Routine();
 const printServerState = () => {
   let allSockets = Object.keys(server.sockets);
   let allGameClientSockets = Object.keys(server.gameClients);
@@ -257,7 +258,6 @@ function Main(){
         server.broadcastGameState("game-state");
         printServerState();
       })
-
       function updateResources(data, callback){
         server.verifyGameClientRequest(verifier, data, ({
           verifies,
@@ -326,9 +326,9 @@ function Main(){
                 let tempLockedResources = server.computeLockedResources(server.gameState, landUtil)
                 server.gameState.playerResources.lockedResources = tempLockedResources;
 
-                let landAsset = server.assets.land;
+                let landAsset = server.gameState.assets.land;
                 let landArea = landUtil.getTotalLandExtensionOfFeatureCollection(data.payload.payload);
-                let assetQuantity = landUtil.areaToAssetQuantity(landAsset, landArea);
+                let assetQuantity = landUtil.areaToAsset(landAsset, landArea).quantity;
                 let lockedResources = server.gameState.playerResources.lockedResources;
                 let playerAddressData = server.gameState.playerResources.addressData[originatorAddress];
                 let playerHasEnoughFunds = server.hasEnoughFunds(
@@ -454,8 +454,18 @@ function Main(){
       });
       socket.on("player-action", (data, callback) => {
         ll.debug("socket: player-action", data);
-        updateResources(data, callback)
-        updatePosition(data, callback)
+        updateResources(data, callback);
+        routine.verifyLandOwnership(landUtil, server.gameState.assets.land, server.gameState, ({
+          totalUsedResources, ownedResource, address
+        }) => {
+          ll.info("socket: land dropped. the user has not enough funds", {
+            totalUsedResources, ownedResource, address,
+          });
+          // drop all the users land
+          delete server.gameState.playerItems[address];
+          updateResources(data, callback);
+        })
+        updatePosition(data, callback);
       });
     });
   }
