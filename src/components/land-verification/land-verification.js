@@ -46,6 +46,27 @@ function LandUtil(){
     }
     return isBuyable;
   }
+  function isWalkable(coordinates, gameState){
+    let isWalkable = true;
+    if(gameState){
+      // update all player items
+      if(gameState?.playerItems) {
+        Object.keys(gameState.playerItems).forEach(address => {
+          gameState.playerItems[address].land.forEach((land) => {
+            land.features.forEach((feature) => {
+
+              landToBuy.features.forEach((featureToBuy) => {
+                if(turf.booleanIntersects(featureToBuy, feature)){
+                  isWalkable = false;
+                }
+              })
+            });
+          })
+        })
+      }
+    }
+    return isWalkable;
+  }
   function getTotalLandExtension(address, gameState){
     let totalSquareMeters = 0;
     (gameState.playerItems[address]?.land || []).forEach(landFeatureCollection => {

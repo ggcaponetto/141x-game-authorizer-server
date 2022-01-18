@@ -309,6 +309,7 @@ function Main(){
                 data.payload.type === "move"
               ){
                 // update the game state
+                // allow the player to move only on public land, own land or holding access tokens
                 server.gameState.playerPositions[originatorAddress] = {
                   address: originatorAddress,
                   position: data.payload.payload
