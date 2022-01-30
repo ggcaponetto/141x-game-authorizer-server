@@ -31,17 +31,22 @@ function LandUtil(){
     if(gameState){
       // update all player items
       if(gameState?.playerItems) {
-        Object.keys(gameState.playerItems).forEach(address => {
-          gameState.playerItems[address].land.forEach((land) => {
-            land.features.forEach((feature) => {
-              landToBuy.features.forEach((featureToBuy) => {
-                if(turf.booleanIntersects(featureToBuy, feature)){
-                  isBuyable = false;
-                }
-              })
-            });
+        // only allow one feature per land
+        if(landToBuy.features.length > 1){
+          isBuyable = false;
+        } else {
+          Object.keys(gameState.playerItems).forEach(address => {
+            gameState.playerItems[address].land.forEach((land) => {
+              land.features.forEach((feature) => {
+                landToBuy.features.forEach((featureToBuy) => {
+                  if(turf.booleanIntersects(featureToBuy, feature)){
+                    isBuyable = false;
+                  }
+                })
+              });
+            })
           })
-        })
+        }
       }
     }
     return isBuyable;

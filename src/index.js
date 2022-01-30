@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 require('dotenv').config()
+let turf = require('@turf/turf');
 const express = require("express");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
@@ -127,7 +128,7 @@ function GameServer(){
   }
 
   this.saveGameState = async function (filePath){
-    let stringifiedGameState = JSON.stringify(this.gameState);
+    let stringifiedGameState = JSON.stringify(this.gameState, null, 2);
     let savedGameState = await new Promise((res, rej) => {
       fs.writeFile(filePath, stringifiedGameState, (err, data) => {
         if (err) rej(err);
@@ -149,6 +150,14 @@ function GameServer(){
         if (err) throw err;
         try {
           let gameState = JSON.parse(data);
+          // override the asset properties that depend on env variables
+          gameState.assets = {
+            land: {
+              type: "land",
+              unit: process.env.LAND_TOKEN_POLICYID,
+              ratio: process.env.LAND_TOKEN_RATIO
+            }
+          }
           res(gameState)
         }catch (e){
           ll.error(`coulde not parse the game state from the file ${filePath}`, data)
@@ -310,9 +319,82 @@ function Main(){
               ){
                 // update the game state
                 // allow the player to move only on public land, own land or holding access tokens
-                server.gameState.playerPositions[originatorAddress] = {
-                  address: originatorAddress,
-                  position: data.payload.payload
+
+                let targetLand = null;
+                let isOwnLand = false;
+
+                Object.keys(server.gameState.playerItems).forEach(key => {
+                  server.gameState.playerItems[key].land.forEach(land => {
+                    let polygon = turf.polygon(land.features[0].geometry.coordinates);
+                    if(turf.booleanIntersects(turf.point([data.payload.payload.lng, data.payload.payload.lat]), polygon)){
+                      targetLand = land;
+                      isOwnLand = originatorAddress === key
+                    }
+                  })
+                });
+
+                if(targetLand){
+// the user want to go to this land
+                  let accessPolicy = targetLand.features[0].properties["accessPolicy"];
+                  if(accessPolicy === "public"){
+                    server.gameState.playerPositions[originatorAddress] = {
+                      address: originatorAddress,
+                      position: data.payload.payload
+                    }
+                  }
+                  else if(accessPolicy === "private") {
+                    // not walkable
+                    callback({
+                      error: true,
+                      message: "no-access-to-this-land",
+                      data: {
+                        verifies,
+                        land: targetLand
+                      }
+                    })
+                  } else {
+                    // enter only holding FT or NFT's
+                    let hasAccessTokens = false;
+                    let requiredTokens = accessPolicy.split("\n").map(requiredToken => {
+                      let parts = requiredToken.trim().split(":");
+                      return {
+                        unit: parts[0],
+                        minQuantity: parseInt(parts[1])
+                      }
+                    });
+                    requiredTokens.forEach(requiredToken => {
+                      server.gameState.playerResources.addressData[originatorAddress].amount.forEach(amount => {
+                        if(
+                          amount.unit === requiredToken.unit
+                          && parseInt(amount.quantity) >= requiredToken.minQuantity
+                        ){
+                          hasAccessTokens = true;
+                        }
+                      })
+                    })
+                    if(hasAccessTokens){
+                      server.gameState.playerPositions[originatorAddress] = {
+                        address: originatorAddress,
+                        position: data.payload.payload
+                      }
+                    } else {
+                      // not walkable
+                      callback({
+                        error: true,
+                        message: "access-requires-one-of-tokens",
+                        extraMessage: accessPolicy,
+                        data: {
+                          verifies,
+                          requiredTokens
+                        }
+                      })
+                    }
+                  }
+                } else {
+                  server.gameState.playerPositions[originatorAddress] = {
+                    address: originatorAddress,
+                    position: data.payload.payload
+                  }
                 }
               } else if(
                 data.payload.type === "buy-land"
