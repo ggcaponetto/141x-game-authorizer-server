@@ -57,6 +57,7 @@ function GameServer(){
   this.sockets = {};
   this.gameClients = {};
   this.authClients = {};
+  this.authClientsPasswords = {};
   this.gameState = {
     assets: {
       land: {
@@ -193,27 +194,30 @@ function GameServer(){
       server, data
     });
     Object.keys(server.authClients).forEach((authSocketId) => {
-      server.authClients[authSocketId].emit("auth-req", data, (response) => {
-        // ll.debug("socket: auth-res", response);
-        // verify the data
-        server.validateGameClientRequest(data);
-        let network = process.env.NETWORK;
-        let message = response.data;
-        let signingResponse = response.signed;
-        let originatorAddress = data.headers.address;
-        let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
-        ll.debug(`socket: auth-res verifies: ${verifies}`, {
-          network, message, signingResponse, originatorAddress
+      let isCorresppondantAuthClient = server.authClientsPasswords[authSocketId] === data.headers.password;
+      if(isCorresppondantAuthClient){
+        server.authClients[authSocketId].emit("auth-req", data, (response) => {
+          // ll.debug("socket: auth-res", response);
+          // verify the data
+          server.validateGameClientRequest(data);
+          let network = process.env.NETWORK;
+          let message = response.data;
+          let signingResponse = response.signed;
+          let originatorAddress = data.headers.address;
+          let verifies = verifier.verify(network, message, signingResponse, originatorAddress)
+          ll.debug(`socket: auth-res verifies: ${verifies}`, {
+            network, message, signingResponse, originatorAddress
+          });
+          onVerificationDone({
+            verifies,
+            originatorAddress,
+            network,
+            message,
+            signingResponse,
+            authSocketId
+          });
         });
-        onVerificationDone({
-          verifies,
-          originatorAddress,
-          network,
-          message,
-          signingResponse,
-          authSocketId
-        });
-      });
+      }
     })
   }
   this.notifyGameClients = function (data){
@@ -240,6 +244,7 @@ const printServerState = () => {
     allSockets,
     allGameClientSockets,
     allAuthClientSockets,
+    authClientsPasswords: server.authClientsPasswords
   });
 }
 
@@ -261,6 +266,7 @@ function Main(){
 
         delete server.sockets[socket.id];
         delete server.authClients[socket.id];
+        delete server.authClientsPasswords[socket.id];
         delete server.gameClients[socket.id];
         delete server.gameState.addressSocketMap[address];
 
@@ -517,9 +523,10 @@ function Main(){
       }
       socket.on("set-client-type", (data, callback) => {
         ll.debug("socket: set-client-type", data);
-        if(data.payload === "auth-client"){
+        if(data.payload.type === "auth-client"){
           // unauthenticated reqeusts
           server.authClients[socket.id] = socket;
+          server.authClientsPasswords[socket.id] = data.payload.password;
           // ping all clients so that they refresh all their addressData with an authenticated request.
           server.notifyGameClients({ message: "new auth client joined server" })
         } else if(data.payload === "game-client"){
