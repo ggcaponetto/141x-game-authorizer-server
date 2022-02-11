@@ -195,7 +195,13 @@ function GameServer(){
     });
     Object.keys(server.authClients).forEach((authSocketId) => {
       let isCorresppondantAuthClient = server.authClientsPasswords[authSocketId] === data.headers.password;
-      if(isCorresppondantAuthClient){
+      let isPasswordSet = (
+        data.headers.password
+        && data.headers.password.trim() !== ""
+        && server.authClientsPasswords[authSocketId]
+        && server.authClientsPasswords[authSocketId].trim() !== ""
+      )
+      if(isCorresppondantAuthClient && isPasswordSet){
         server.authClients[authSocketId].emit("auth-req", data, (response) => {
           // ll.debug("socket: auth-res", response);
           // verify the data
