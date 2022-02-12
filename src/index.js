@@ -201,7 +201,8 @@ function GameServer(){
         && server.authClientsPasswords[authSocketId]
         && server.authClientsPasswords[authSocketId].trim() !== ""
       )
-      if(isCorresppondantAuthClient && isPasswordSet){
+      let isPasswordSecure = data.headers.password.trim().length >= 16;
+      if(isCorresppondantAuthClient && isPasswordSet && isPasswordSecure){
         server.authClients[authSocketId].emit("auth-req", data, (response) => {
           // ll.debug("socket: auth-res", response);
           // verify the data
