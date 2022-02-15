@@ -26,6 +26,7 @@ const httpServer = createServer(app);
 const options = {
   cors: {
     origin: [
+      "http://localhost:63342",
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
@@ -259,6 +260,14 @@ function Main(){
   this.run = function (server, verifier){
     io.on("connection", (socket) => {
       ll.debug("socket: connection", socket.id);
+      // the following listeners handles ws connections from the portals
+      socket.on("portal-to-madax", function (data){
+        if(data.type === "get-game-state"){
+          socket.emit("madax-to-portal", server.gameState);
+        } else {
+          socket.emit("madax-to-portal", `no-command-for: ${JSON.stringify(data)}`)
+        }
+      });
       server.sockets[socket.id] = socket;
       printServerState();
       socket.on("disconnect", () => {
