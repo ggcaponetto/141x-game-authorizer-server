@@ -23,20 +23,17 @@ if (process.env.NODE_ENV === 'production') {
 const app = express();
 const httpServer = createServer(app);
 
+
 const options = {
   cors: {
     origin: [
-      "http://localhost:63342",
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
-      'http://localhost:3005',
-      'http://localhost:5000',
-      'http://localhost:5001',
-      'http://localhost:5002',
-      'http://localhost:5003',
-      'http://localhost:5005',
+        ...(()=>{
+          let localhostUrls = [];
+          for(let i = 0; i <= 100000; i++){
+            localhostUrls.push(`http://localhost:${i.toString()}`)
+          }
+          return localhostUrls;
+        })(),
       'https://authorizer.141x.io',
       'https://authorizer.141x-testnet.io',
       'https://meta.141x.io',
@@ -262,6 +259,7 @@ function Main(){
       ll.debug("socket: connection", socket.id);
       // the following listeners handles ws connections from the portals
       socket.on("portal-to-madax", function (data){
+        ll.debug("got porta-to-madax message", data);
         if(data.type === "get-game-state"){
           socket.emit("madax-to-portal", server.gameState);
         } else {
