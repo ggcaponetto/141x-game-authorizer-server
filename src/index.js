@@ -31,6 +31,7 @@ const options = {
                 let localhostUrls = [];
                 for (let i = 0; i <= 100000; i++) {
                     localhostUrls.push(`http://localhost:${i.toString()}`)
+                    localhostUrls.push(`http://127.0.0.1:${i.toString()}`)
                 }
                 return localhostUrls;
             })(),
@@ -38,6 +39,10 @@ const options = {
             'https://authorizer.141x-testnet.io',
             'https://meta.141x.io',
             'https://meta.141x-testnet.io',
+            'https://mportal.141x-testnet.io',
+            'https://mportalgs.141x-testnet.io',
+            'https://mportal.141x.io',
+            'https://mportalgs.141x.io',
         ],
         credentials: true,
         path: '/socket.io',
