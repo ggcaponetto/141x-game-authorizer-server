@@ -30,8 +30,8 @@ const options = {
             ...(() => {
                 let localhostUrls = [];
                 for (let i = 0; i <= 100000; i++) {
-                    localhostUrls.push(`http://localhost:${i.toString()}`)
-                    localhostUrls.push(`http://127.0.0.1:${i.toString()}`)
+                    localhostUrls.push(`http://localhost:${i.toString()}`);
+                    localhostUrls.push(`http://127.0.0.1:${i.toString()}`);
                 }
                 return localhostUrls;
             })(),
@@ -637,7 +637,7 @@ main.run(server, verifier);
 // main.startClientUpdates(server);
 
 let port = process.env.PORT;
-httpServer.listen(port);
+httpServer.listen(port, '0.0.0.0');
 ll.debug("websocket server is listening on port " + port + ". on the " + process.env.NETWORK);
 
 //catches uncaught exceptions
