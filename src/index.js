@@ -220,6 +220,13 @@ function GameServer() {
                             authSocketId
                         });
                     });
+                } else {
+                    let originatorAddress = data.headers.address;
+                    onVerificationDone({
+                        verifies: false,
+                        originatorAddress,
+                        network
+                    });
                 }
                 isVerificationPerformed = true;
             })
@@ -334,6 +341,10 @@ function Main() {
                             authSocketId: authSocketId,
                             gameSocketId: socket.id
                         }
+                    } else {
+                        ll.warn("socket: verification was not ok", {
+                            data, verifies, originatorAddress, network
+                        });
                     }
                 });
             }
@@ -373,9 +384,9 @@ function Main() {
                                 });
 
                                 if (targetLand) {
-// the user want to go to this land
+                                // the user want to go to this land
                                     let accessPolicy = targetLand.features[0].properties["accessPolicy"];
-                                    if (accessPolicy === "public") {
+                                    if (accessPolicy === undefined || accessPolicy === "public") {
                                         server.gameState.playerPositions[originatorAddress] = {
                                             address: originatorAddress,
                                             position: data.payload.payload
@@ -384,6 +395,7 @@ function Main() {
                                         // not walkable
                                         callback({
                                             error: true,
+                                            namespace: "land-selection",
                                             message: "no-access-to-this-land",
                                             data: {
                                                 verifies,
@@ -419,6 +431,7 @@ function Main() {
                                             // not walkable
                                             callback({
                                                 error: true,
+                                                namespace: "land-selection",
                                                 message: "access-requires-one-of-tokens",
                                                 extraMessage: accessPolicy,
                                                 data: {
@@ -483,6 +496,7 @@ function Main() {
                                     printServerState();
                                     callback({
                                         error: true,
+                                        namespace: "land-selection",
                                         message: "not-enough-funds",
                                         data: {
                                             verifies,
@@ -550,6 +564,15 @@ function Main() {
                             authSocketId: authSocketId,
                             gameSocketId: socket.id
                         }
+                    } else {
+                        callback({
+                            error: true,
+                            namespace: "settings",
+                            message: "no-valid-password",
+                            data: {
+                                verifies
+                            }
+                        })
                     }
                 });
             }
