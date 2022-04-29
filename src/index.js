@@ -220,13 +220,6 @@ function GameServer() {
                             authSocketId
                         });
                     });
-                } else {
-                    let originatorAddress = data.headers.address;
-                    onVerificationDone({
-                        verifies: false,
-                        originatorAddress,
-                        network
-                    });
                 }
                 isVerificationPerformed = true;
             })
@@ -386,7 +379,7 @@ function Main() {
                                 if (targetLand) {
                                 // the user want to go to this land
                                     let accessPolicy = targetLand.features[0].properties["accessPolicy"];
-                                    if (accessPolicy === undefined || accessPolicy === "public") {
+                                    if (accessPolicy === undefined || accessPolicy === "public" || isOwnLand) {
                                         server.gameState.playerPositions[originatorAddress] = {
                                             address: originatorAddress,
                                             position: data.payload.payload
@@ -564,15 +557,6 @@ function Main() {
                             authSocketId: authSocketId,
                             gameSocketId: socket.id
                         }
-                    } else {
-                        callback({
-                            error: true,
-                            namespace: "settings",
-                            message: "no-valid-password",
-                            data: {
-                                verifies
-                            }
-                        })
                     }
                 });
             }
