@@ -10,7 +10,8 @@
     "docker-tag-production": "docker tag 141x-game-authorizer-server:latest ggcaponetto/141x-game-authorizer-server:latest",
     "docker-push-production": "docker image push ggcaponetto/141x-game-authorizer-server:latest",
     "docker-run-production": "docker stop 141x-game-authorizer-server || true && docker rm 141x-game-authorizer-server || true || docker run -d --name 141x-game-authorizer-server -p 5001:5001 -d ggcaponetto/141x-game-authorizer-server:latest .",
-    "docker-deploy": "npm run docker-build-production && npm run docker-tag-production && npm run docker-push-production"
+    "docker-deploy": "npm run docker-build-production && npm run docker-tag-production && npm run docker-push-production",
+    "api": "node api/index.js"
   },
   "author": "",
   "license": "ISC",
@@ -23,12 +24,15 @@
     "cross-env": "^7.0.3",
     "dotenv": "^10.0.0",
     "express": "^4.17.1",
+    "express-openapi": "^11.0.1",
     "loglevel": "^1.8.0",
+    "redoc-express": "^1.0.0",
     "socket.io": "^4.4.0",
     "yargs": "^17.2.1"
   },
   "devDependencies": {
     "chai": "^4.3.4",
-    "mocha": "^9.1.3"
+    "mocha": "^9.1.3",
+    "swagger-autogen": "^2.21.1"
   }
 }

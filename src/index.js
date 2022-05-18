@@ -655,3 +655,7 @@ process.on('uncaughtException', (e) => {
 module.exports = {
     GameServer
 }
+
+// run the api
+const api = require("../api/api");
+api.run();
