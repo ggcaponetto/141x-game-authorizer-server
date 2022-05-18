@@ -56,7 +56,13 @@ function run(){
         const resolvedPath = path.resolve(`${__dirname}/../../141x-static-fs/files/portals/${req.params.network}/${req.params.address}/${req.params.portal}/${req.params.file}`);
         ll.error(`posting data to ${resolvedPath}`, req.body);
         try {
-            res.status(200).send(req.body)
+            const resolvedPath = path.resolve(`${__dirname}/../../141x-static-fs/files/portals/${req.params.network}/${req.params.address}/${req.params.portal}/${req.params.file}`);
+            fs.writeFile(resolvedPath, req.body.toString(), (err, data) => {
+                if (err){
+                    res.status(500).send(err.message)
+                }
+                res.status(201).send(data);
+            });
         } catch (e) {
             ll.error(e.message);
             res.status(500).send(e.messages);
